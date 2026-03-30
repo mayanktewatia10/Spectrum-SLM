@@ -133,7 +133,7 @@ def load_model(ckpt_path: str = None):
         nhead=4, num_layers=4, dim_feedforward=512, dropout=0.1,
     )
     if ckpt_path and os.path.exists(ckpt_path):
-        ckpt = torch.load(ckpt_path, map_location='cpu', weights_only=True)
+        ckpt = torch.load(ckpt_path, map_location='cpu', weights_only=False)
         model.load_state_dict(ckpt.get('model', ckpt))
         model.eval()
         return model, True

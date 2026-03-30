@@ -687,7 +687,6 @@ def main(args):
         te_ds = SpectrumDataset(psds_norm[idx_te], pu[idx_te], mod[idx_te], snr[idx_te],
                                 phase=2)
 
-        from torch.utils.data import DataLoader
         tr_loader = DataLoader(tr_ds, batch_size=args.batch_size, shuffle=True)
         vl_loader = DataLoader(vl_ds, batch_size=args.batch_size)
         te_loader = DataLoader(te_ds, batch_size=args.batch_size)
@@ -746,15 +745,16 @@ def main(args):
             for ds in [tr_ds, vl_ds, te_ds]:
                 ds.phase = 2
 
-        history2 = finetune_supervised(
-            model, tr_loader, vl_loader,
-            pu_class_weight = pu_weights,
-            n_epochs        = args.epochs_p2,
-            lr              = args.lr / 3,
-            device          = device,
-            save_dir        = save_dir,
-            patience        = args.patience,
-        )
+        if args.epochs_p2 > 0:
+            history2 = finetune_supervised(
+                model, tr_loader, vl_loader,
+                pu_class_weight = pu_weights,
+                n_epochs        = args.epochs_p2,
+                lr              = args.lr / 3,
+                device          = device,
+                save_dir        = save_dir,
+                patience        = args.patience,
+            )
 
     # ── Phase 3 ───────────────────────────────────────────────────────────────
     if args.phase >= 3:
