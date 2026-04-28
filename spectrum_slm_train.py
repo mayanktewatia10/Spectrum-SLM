@@ -38,7 +38,7 @@ from spectrum_slm_model  import SpectrumSLM, MultiTaskLoss, MSMLoss, FocalLoss
 from spectrum_slm_dataset import (
     build_dataloaders, generate_synthetic_psd,
     SpectrumNormalizer, SpectrumDataset, SpectrumAugmenter,
-    N_BINS, N_PATCHES, SNR_BINS
+    N_BINS, N_PATCHES, PATCH_SIZE, SNR_BINS
 )
 
 
@@ -120,11 +120,11 @@ def pretrain_msm(
         train_losses = []
 
         for batch in train_loader:
-            psd, mask = batch                      # (B, 176), (B, 22) bool
+            psd, mask = batch                      # (B, 176), (B, 176) bool
             psd, mask = psd.to(device), mask.to(device)
 
             # Ground truth patches before masking
-            true_patches = psd.view(-1, N_PATCHES, 8)   # (B, 22, 8)
+            true_patches = psd.view(-1, N_PATCHES, PATCH_SIZE)   # (B, 176, 1)
 
             optimizer.zero_grad()
             out = model(psd, mask=mask, return_msm=True)
@@ -141,7 +141,7 @@ def pretrain_msm(
             for batch in val_loader:
                 psd, mask = batch
                 psd, mask = psd.to(device), mask.to(device)
-                true_patches = psd.view(-1, N_PATCHES, 8)
+                true_patches = psd.view(-1, N_PATCHES, PATCH_SIZE)   # (B, 176, 1)
                 out = model(psd, mask=mask, return_msm=True)
                 loss = criterion(out['msm_pred'], true_patches, mask)
                 val_losses.append(loss.item())
@@ -705,7 +705,7 @@ def main(args):
     # ── Model ─────────────────────────────────────────────────────────────────
     model = SpectrumSLM(
         n_bins          = N_BINS,
-        patch_size      = 8,
+        patch_size      = 1,
         d_model         = 128,
         nhead           = 4,
         num_layers      = 4,

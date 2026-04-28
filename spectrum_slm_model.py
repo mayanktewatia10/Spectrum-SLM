@@ -4,7 +4,7 @@ spectrum_slm_model.py
 Spectrum-SLM: A Small Language Model for Cognitive Radio Spectrum Sensing
 
 Architecture:
-  PatchEmbedding (176 bins -> 22 patches) +
+  PatchEmbedding (176 bins -> 176 patches, patch_size=1) +
   FrequencyAwarePositionalEncoding +
   SpectrumTransformerEncoder (4 layers, 4 heads, d_model=128) +
   Multi-task heads: PU Detection | Modulation | SNR | Generative
@@ -30,18 +30,18 @@ class PatchEmbedding(nn.Module):
     Splits a 176-bin PSD vector into non-overlapping patches of size `patch_size`
     and projects each patch to d_model dimensions via a learned linear layer.
 
-    176 bins / 8 bins-per-patch = 22 spectral tokens.
+    176 bins / 1 bin-per-patch = 176 spectral tokens.
 
     Input  : (B, 176)
-    Output : (B, 23, d_model)   [22 patches + 1 prepended CLS token]
+    Output : (B, 177, d_model)   [176 patches + 1 prepended CLS token]
     """
 
-    def __init__(self, n_bins: int = 176, patch_size: int = 8, d_model: int = 128):
+    def __init__(self, n_bins: int = 176, patch_size: int = 1, d_model: int = 128):
         super().__init__()
         assert n_bins % patch_size == 0, "n_bins must be divisible by patch_size"
         self.n_bins = n_bins
         self.patch_size = patch_size
-        self.n_patches = n_bins // patch_size          # 22
+        self.n_patches = n_bins // patch_size          # 176  (each bin = 1 patch)
         self.d_model = d_model
 
         # Linear projection for each patch  (patch_size -> d_model)
@@ -60,11 +60,11 @@ class PatchEmbedding(nn.Module):
         returns : (B, 23, d_model)
         """
         B = x.size(0)
-        # Reshape: (B, 22, 8)
+        # Reshape: (B, 176, 1)
         x = x.view(B, self.n_patches, self.patch_size)
-        # Project: (B, 22, d_model)
+        # Project: (B, 176, d_model)
         x = self.projection(x)
-        # Prepend CLS token: (B, 23, d_model)
+        # Prepend CLS token: (B, 177, d_model)
         cls = self.cls_token.expand(B, -1, -1)
         x = torch.cat([cls, x], dim=1)
         return self.norm(x)
@@ -80,14 +80,14 @@ class FrequencyAwarePositionalEncoding(nn.Module):
       (a) Learnable patch position embedding  (standard transformer PE)
       (b) Sinusoidal frequency-aware encoding tied to physical patch centre-frequency
 
-    The combination informs the model both of *order* (patch 0 vs patch 21)
+    The combination informs the model both of *order* (patch 0 vs patch 175)
     and *physical meaning* (lower vs upper frequency region).
 
-    Input  : (B, 23, d_model)
-    Output : (B, 23, d_model)
+    Input  : (B, 177, d_model)
+    Output : (B, 177, d_model)
     """
 
-    def __init__(self, n_tokens: int = 23, d_model: int = 128, dropout: float = 0.1):
+    def __init__(self, n_tokens: int = 177, d_model: int = 128, dropout: float = 0.1):
         super().__init__()
         self.dropout = nn.Dropout(dropout)
 
@@ -129,8 +129,8 @@ class SpectrumTransformerEncoder(nn.Module):
     Stack of N standard TransformerEncoder layers with pre-LN (more stable
     training) and a final layer norm.
 
-    Input  : (B, 23, d_model)
-    Output : (B, 23, d_model)
+    Input  : (B, 177, d_model)
+    Output : (B, 177, d_model)
     """
 
     def __init__(
@@ -223,7 +223,7 @@ class GenerativeHead(nn.Module):
 class MSMHead(nn.Module):
     """
     Reconstructs masked PSD patches during self-supervised pre-training.
-    Operates on all 22 patch positions (not the CLS token).
+    Operates on all 176 patch positions (not the CLS token).
     """
     def __init__(self, d_model: int = 128, patch_size: int = 8):
         super().__init__()
@@ -234,8 +234,8 @@ class MSMHead(nn.Module):
 
     def forward(self, patch_features: torch.Tensor) -> torch.Tensor:
         """
-        patch_features : (B, 22, d_model) — the 22 patch token representations
-        returns        : (B, 22, 8)       — reconstructed patch values
+        patch_features : (B, 176, d_model) — the 176 patch token representations
+        returns        : (B, 176, 1)       — reconstructed patch values (patch_size=1)
         """
         return self.net(patch_features)
 
@@ -251,7 +251,7 @@ class SpectrumSLM(nn.Module):
     ┌─────────────────────────────────────────┐
     │  PSD Vector (176 bins)                  │
     │      ↓                                  │
-    │  PatchEmbedding (22 patches + CLS)      │
+    │  PatchEmbedding (176 patches + CLS)     │
     │      ↓                                  │
     │  FrequencyAware PositionalEncoding      │
     │      ↓                                  │
@@ -268,7 +268,7 @@ class SpectrumSLM(nn.Module):
     def __init__(
         self,
         n_bins: int = 176,
-        patch_size: int = 8,
+        patch_size: int = 1,
         d_model: int = 128,
         nhead: int = 4,
         num_layers: int = 4,
@@ -318,7 +318,7 @@ class SpectrumSLM(nn.Module):
     ) -> dict:
         """
         psd  : (B, 176)  — normalised PSD vector
-        mask : (B, 22)   — boolean mask (True = masked patches) for Phase 1
+        mask : (B, 176)  — boolean mask (True = masked patches) for Phase 1
         return_msm : if True, also return MSM reconstruction
 
         Returns a dict with keys:
@@ -326,7 +326,7 @@ class SpectrumSLM(nn.Module):
           'mod_logits'  : (B, 4)
           'snr_pred'    : (B,)
           'gen_pred'    : (B, 176)
-          'msm_pred'    : (B, 22, 8)  — only if return_msm=True
+          'msm_pred'    : (B, 176, 1)  — only if return_msm=True
           'cls_feat'    : (B, d_model)
         """
         # 1. Tokenize + positional encoding
@@ -335,10 +335,10 @@ class SpectrumSLM(nn.Module):
 
         # 2. Apply mask for Phase 1 (zero out masked patch tokens)
         if mask is not None:
-            # mask : (B, 22) — pad to (B, 23) with False for CLS
+            # mask : (B, 176) — pad to (B, 177) with False for CLS
             b = mask.size(0)
             cls_mask = torch.zeros(b, 1, dtype=torch.bool, device=mask.device)
-            full_mask = torch.cat([cls_mask, mask], dim=1)          # (B, 23)
+            full_mask = torch.cat([cls_mask, mask], dim=1)          # (B, 177)
             tokens[full_mask] = 0.0
 
         # 3. Transformer encoder
@@ -356,7 +356,7 @@ class SpectrumSLM(nn.Module):
         }
 
         if return_msm:
-            patch_features = features[:, 1:, :]       # (B, 22, d) skip CLS
+            patch_features = features[:, 1:, :]       # (B, 176, d) skip CLS
             out['msm_pred'] = self.msm_head(patch_features)
 
         return out
@@ -495,7 +495,7 @@ if __name__ == '__main__':
     # Dummy forward pass
     B = 4
     psd    = torch.randn(B, 176)
-    mask   = torch.zeros(B, 22, dtype=torch.bool)
+    mask   = torch.zeros(B, 176, dtype=torch.bool)
     mask[:, ::3] = True                         # mask every 3rd patch
 
     out = model(psd, mask=mask, return_msm=True)

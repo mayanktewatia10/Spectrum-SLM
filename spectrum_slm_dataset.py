@@ -32,8 +32,8 @@ from typing import Optional, Tuple, List, Dict, Union
 # ─────────────────────────────────────────────────────────────────────────────
 
 N_BINS        = 176                  # PSD frequency bins
-PATCH_SIZE    = 8
-N_PATCHES     = N_BINS // PATCH_SIZE  # 22
+PATCH_SIZE    = 1
+N_PATCHES     = N_BINS // PATCH_SIZE  # 176  (each bin is its own patch)
 MOD_MAP       = {'BPSK': 0, 'QPSK': 1, '8PSK': 2, '16QAM': 3}
 MOD_MAP_INV   = {v: k for k, v in MOD_MAP.items()}
 SNR_BINS      = [4, 6, 8, 10, 12, 14, 16, 18, 20]   # dB
@@ -295,7 +295,7 @@ class SpectrumDataset(Dataset):
         return len(self.psds)
 
     def _random_mask(self) -> torch.Tensor:
-        """Returns bool mask of shape (22,) with ~mask_ratio True entries."""
+        """Returns bool mask of shape (176,) with ~mask_ratio True entries."""
         n_mask = max(1, int(N_PATCHES * self.mask_ratio))
         idx = np.random.choice(N_PATCHES, n_mask, replace=False)
         mask = torch.zeros(N_PATCHES, dtype=torch.bool)

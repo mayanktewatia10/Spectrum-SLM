@@ -51,8 +51,8 @@ LEGACY_CKPT_DIR = os.path.join(ROOT_DIR, "slm_checkpoints")
 # ─────────────────────────────────────────────────────────────────────────────
 
 N_BINS          = 176
-PATCH_SIZE      = 8
-N_PATCHES       = N_BINS // PATCH_SIZE   # 22
+PATCH_SIZE      = 1
+N_PATCHES       = N_BINS // PATCH_SIZE   # 176  (each bin is its own patch)
 D_MODEL         = 128
 N_HEAD          = 4
 NUM_LAYERS      = 4
@@ -160,5 +160,5 @@ if __name__ == "__main__":
     print(f"  PHASE2_DATA_DIR : {PHASE2_DATA_DIR}  (exists={os.path.isdir(PHASE2_DATA_DIR)})")
     print(f"  CKPT_PHASE2     : {CKPT_PHASE2}")
     print(f"  N_MOD_CLASSES_V2: {N_MOD_CLASSES_V2}  {MOD_NAMES_V2}")
-    print(f"  N_BINS          : {N_BINS}  PATCH_SIZE={PATCH_SIZE}  N_PATCHES={N_PATCHES}")
+    print(f"  N_BINS          : {N_BINS}  PATCH_SIZE={PATCH_SIZE}  N_PATCHES={N_PATCHES}  (176 patches)")
     print("  Checkpoint dirs created ✓")
