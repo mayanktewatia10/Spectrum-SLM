@@ -98,18 +98,22 @@ def load_all_pth_files(
 
     result = {}
     for mod in modulations:
-        pattern = os.path.join(data_dir, f'psd_binned_by_snr_{mod}.pth')
-        matches = glob.glob(pattern)
+        matches = []
+        # 1. Check root data_dir
+        matches = glob.glob(os.path.join(data_dir, f'psd_binned_by_snr_{mod}.pth'))
+        # 2. Recursively search all subfolders (handles Symbol1_Modulation, Symbol2_Results etc.)
         if not matches:
-            # Try secondary_user subfolder
-            pattern = os.path.join(data_dir, 'Secondary_User',
-                                   f'psd_binned_by_snr_{mod}.pth')
-            matches = glob.glob(pattern)
+            matches = glob.glob(
+                os.path.join(data_dir, '**', f'psd_binned_by_snr_{mod}.pth'),
+                recursive=True
+            )
         if matches:
             psds, pu, snr = load_pth_file(matches[0])
             if len(psds) > 0:
                 result[mod] = (psds, pu, snr)
-                print(f"  Loaded {mod}: {len(psds):,} samples from .pth")
+                print(f"  Loaded {mod}: {len(psds):,} samples from {matches[0]}")
+        else:
+            print(f"  [WARN] No .pth found for modulation: {mod}")
     return result
 
 
