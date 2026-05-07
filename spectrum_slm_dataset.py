@@ -67,7 +67,13 @@ def load_pth_file(path: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         for item in pairs[snr_bin]:
             # The item might be (psd_vec, pu_label) or (psd_vec, pu_label, mod_label)
             psd_vec = item[0]
-            label = item[1]
+            raw_label = item[1]
+            
+            # If the label is an array or list (e.g. [pu_present, modulation]), grab the first item
+            if isinstance(raw_label, (list, tuple, np.ndarray)):
+                label = raw_label[0]
+            else:
+                label = raw_label
             
             psd_np = np.array(psd_vec, dtype=np.float32).ravel()
             # If shorter or longer than 176, pad/trim
