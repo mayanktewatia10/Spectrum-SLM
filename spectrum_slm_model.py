@@ -431,7 +431,9 @@ class MultiTaskLoss(nn.Module):
         self.gamma = gamma
         self.learn_weights = learn_weights
 
-        self.pu_loss_fn  = FocalLoss(gamma=focal_gamma, alpha=pu_class_weight)
+        # Use standard CrossEntropy instead of FocalLoss to provide stronger gradients
+        # against the competing SNR and Modulation heads.
+        self.pu_loss_fn  = nn.CrossEntropyLoss(weight=pu_class_weight)
         self.mod_loss_fn = nn.CrossEntropyLoss()
         self.snr_loss_fn = nn.MSELoss()
 
