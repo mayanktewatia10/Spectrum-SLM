@@ -114,6 +114,23 @@ def load_all_pth_files(
                 print(f"  Loaded {mod}: {len(psds):,} samples from {matches[0]}")
         else:
             print(f"  [WARN] No .pth found for modulation: {mod}")
+
+    # ── Fallback: single combined file (dataset_binned.pth / dataset.pth) ───
+    if not result:
+        for fname in ['dataset_binned.pth', 'dataset.pth']:
+            combined = glob.glob(os.path.join(data_dir, fname))
+            if not combined:
+                combined = glob.glob(
+                    os.path.join(data_dir, '**', fname), recursive=True
+                )
+            if combined:
+                print(f"  [INFO] Using combined dataset: {combined[0]}")
+                psds, pu, snr = load_pth_file(combined[0])
+                if len(psds) > 0:
+                    result['combined'] = (psds, pu, snr)
+                    print(f"  Loaded combined: {len(psds):,} samples")
+                    break
+
     return result
 
 
