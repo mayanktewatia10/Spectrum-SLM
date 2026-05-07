@@ -64,7 +64,11 @@ def load_pth_file(path: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     for snr_bin in bins:
         if snr_bin not in pairs:
             continue
-        for psd_vec, label in pairs[snr_bin]:
+        for item in pairs[snr_bin]:
+            # The item might be (psd_vec, pu_label) or (psd_vec, pu_label, mod_label)
+            psd_vec = item[0]
+            label = item[1]
+            
             psd_np = np.array(psd_vec, dtype=np.float32).ravel()
             # If shorter or longer than 176, pad/trim
             if len(psd_np) < N_BINS:
