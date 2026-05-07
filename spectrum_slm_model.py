@@ -389,10 +389,16 @@ class FocalLoss(nn.Module):
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         """logits: (B, 2), targets: (B,) with values 0/1"""
-        ce_loss = F.cross_entropy(logits, targets, weight=self.alpha,
-                                  reduction='none')
-        pt = torch.exp(-ce_loss)
-        focal_loss = (1 - pt) ** self.gamma * ce_loss
+        # Calculate unweighted cross entropy to get accurate p_t
+        ce_loss_unweighted = F.cross_entropy(logits, targets, reduction='none')
+        pt = torch.exp(-ce_loss_unweighted)
+        
+        focal_loss = (1 - pt) ** self.gamma * ce_loss_unweighted
+        
+        # Apply class weights (alpha) multiplicatively after the focal modulation
+        if self.alpha is not None:
+            alpha_t = self.alpha[targets]
+            focal_loss = alpha_t * focal_loss
 
         if self.reduction == 'mean':
             return focal_loss.mean()
