@@ -27,10 +27,10 @@ from typing import Tuple, Optional
 
 class PatchEmbedding(nn.Module):
     """
-    Splits a 176-bin PSD vector into non-overlapping patches of size `patch_size`
-    and projects each patch to d_model dimensions via a learned linear layer.
-
-    176 bins / 1 bin-per-patch = 176 spectral tokens.
+    Splits a 176-bin PSD vector into non-overlapping patches of size `patch_size`.
+    To prevent LayerNorm from destroying continuous scalar amplitudes when patch_size=1,
+    this uses a Sinusoidal Amplitude Encoding. The scalar is mapped to a phase, 
+    and the token becomes [sin(phase), cos(phase)], preserving amplitude as an angle.
 
     Input  : (B, 176)
     Output : (B, 177, d_model)   [176 patches + 1 prepended CLS token]
@@ -41,11 +41,11 @@ class PatchEmbedding(nn.Module):
         assert n_bins % patch_size == 0, "n_bins must be divisible by patch_size"
         self.n_bins = n_bins
         self.patch_size = patch_size
-        self.n_patches = n_bins // patch_size          # 176  (each bin = 1 patch)
+        self.n_patches = n_bins // patch_size          # 176
         self.d_model = d_model
 
-        # Linear projection for each patch  (patch_size -> d_model)
-        self.projection = nn.Linear(patch_size, d_model)
+        # Project patch to d_model/2 phases
+        self.freq_proj = nn.Linear(patch_size, d_model // 2)
 
         # Learnable CLS token (aggregates global spectrum context)
         self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
@@ -57,17 +57,20 @@ class PatchEmbedding(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         x : (B, 176)
-        returns : (B, 23, d_model)
+        returns : (B, 177, d_model)
         """
         B = x.size(0)
         # Reshape: (B, 176, 1)
         x = x.view(B, self.n_patches, self.patch_size)
-        # Project: (B, 176, d_model)
-        x = self.projection(x)
+        
+        # Continuous Value Encoding
+        phase = self.freq_proj(x)                                          # (B, 176, d_model/2)
+        x_encoded = torch.cat([torch.sin(phase), torch.cos(phase)], dim=-1) # (B, 176, d_model)
+        
         # Prepend CLS token: (B, 177, d_model)
         cls = self.cls_token.expand(B, -1, -1)
-        x = torch.cat([cls, x], dim=1)
-        return self.norm(x)
+        x_out = torch.cat([cls, x_encoded], dim=1)
+        return self.norm(x_out)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -473,14 +476,17 @@ class MSMLoss(nn.Module):
 
     def forward(
         self,
-        pred_patches: torch.Tensor,   # (B, 22, 8)
-        true_patches: torch.Tensor,   # (B, 22, 8)
-        mask: torch.Tensor,           # (B, 22) bool — True = masked
+        pred_patches: torch.Tensor,   # (B, L, patch_size)
+        true_patches: torch.Tensor,   # (B, L, patch_size)
+        mask: torch.Tensor,           # (B, L) bool — True = masked
     ) -> torch.Tensor:
         # Only compute loss on masked positions
-        diff = (pred_patches - true_patches) ** 2       # (B, 22, 8)
-        mask_f = mask.float().unsqueeze(-1)             # (B, 22, 1)
-        loss = (diff * mask_f).sum() / (mask_f.sum() * 8 + 1e-8)
+        diff = (pred_patches - true_patches) ** 2       # (B, L, patch_size)
+        mask_f = mask.float().unsqueeze(-1)             # (B, L, 1)
+        
+        # Dynamically get patch size instead of hardcoding 8
+        patch_size = pred_patches.size(-1)
+        loss = (diff * mask_f).sum() / (mask_f.sum() * patch_size + 1e-8)
         return loss
 
 
